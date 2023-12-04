@@ -117,6 +117,7 @@ class RemoveBackgroundPyroModel(nn.Module):
                  empty_UMI_threshold: int,
                  log_counts_crossover: float,
                  use_cuda: bool,
+                 use_mps: bool,
                  phi_loc_prior: float = consts.PHI_LOC_PRIOR,
                  phi_scale_prior: float = consts.PHI_SCALE_PRIOR,
                  rho_alpha_prior: float = consts.RHO_ALPHA_PRIOR,
@@ -148,19 +149,27 @@ class RemoveBackgroundPyroModel(nn.Module):
         self.counts_crossover = np.exp(log_counts_crossover)
 
         # Determine whether we are working on a GPU.
-        if use_cuda:
-            # Calling cuda() here will put all the parameters of
-            # the encoder and decoder networks into GPU memory.
-            self.cuda()
+        if use_cuda or use_mps:
+            if use_cuda:
+                self.device = 'cuda'
+            else:
+                self.device = 'mps'
+
+            self.to( self.device )
             try:
+                # Returns a deep copy when perform object.to(device), so need to make new dict and replace.
+                encoder_parts_device = {}
                 for key, value in self.encoder.items():
-                    value.cuda()
+                    encoder_parts_device[key] = value.to( self.device )
+                self.encoder.module_dict = encoder_parts_device
             except KeyError:
                 pass
-            self.device = 'cuda'
+
         else:
             self.device = 'cpu'
+
         self.use_cuda = use_cuda
+        self.use_mps = use_mps
 
         # Priors
         assert dataset_obj_priors['d_std'] > 0, \
@@ -260,7 +269,8 @@ class RemoveBackgroundPyroModel(nn.Module):
 
         # Happens in parallel for each data point (cell barcode) independently:
         with pyro.plate("data", x.shape[0],
-                        use_cuda=self.use_cuda, device=self.device):
+                        #use_cuda=self.use_cuda, Is deprecated.
+                        device=self.device):
 
             # Sample z from prior.
             z = pyro.sample("z",
@@ -505,7 +515,8 @@ class RemoveBackgroundPyroModel(nn.Module):
 
         # Happens in parallel for each data point (cell barcode) independently:
         with pyro.plate("data", x.shape[0],
-                        use_cuda=self.use_cuda, device=self.device):
+                        #use_cuda=self.use_cuda,
+                        device=self.device):
 
             # Sample swapping fraction rho.
             if self.include_rho:

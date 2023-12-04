@@ -1,5 +1,8 @@
 """Single run of remove-background, given input arguments."""
 
+import os
+os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
+
 import cellbender
 from cellbender.remove_background.model import RemoveBackgroundPyroModel
 from cellbender.remove_background.data.dataset import get_dataset_obj, \
@@ -33,7 +36,6 @@ import scipy.sparse as sp
 import pandas as pd
 import torch
 
-import os
 import sys
 import logging
 import argparse
@@ -90,7 +92,7 @@ def run_remove_background(args: argparse.Namespace) -> Posterior:
     logger.info("Running remove-background")
 
     # Run pytorch multithreaded if running on CPU: but this makes little difference in runtime.
-    if not args.use_cuda:
+    if not args.use_cuda and not args.use_mps: # EDIT HERE.
         if args.n_threads is not None:
             n_jobs = args.n_threads
         else:
@@ -622,12 +624,18 @@ def run_inference(dataset_obj: SingleCellRNACountsDataset,
     pyro.clear_param_store()
     pyro.set_rng_seed(consts.RANDOM_SEED)
     if args.use_cuda:
+        device = 'cuda:0'
         torch.cuda.manual_seed_all(consts.RANDOM_SEED)
+    elif args.use_mps:
+        device = 'mps'
+        torch.manual_seed(consts.RANDOM_SEED)
+    else:
+        device = 'cpu'
 
     # Attempt to load from a previously-saved checkpoint.
     ckpt = attempt_load_checkpoint(filebase=checkpoint_filename,
                                    tarball_name=args.input_checkpoint_tarball,
-                                   force_device='cuda:0' if args.use_cuda else 'cpu')
+                                   force_device=device)
     ckpt_loaded = ckpt['loaded']  # True if a checkpoint was loaded successfully
 
     if ckpt_loaded:
@@ -690,7 +698,9 @@ def run_inference(dataset_obj: SingleCellRNACountsDataset,
                                           analyzed_gene_names=dataset_obj.data['gene_names'][dataset_obj.analyzed_gene_inds],
                                           empty_UMI_threshold=dataset_obj.empty_UMI_threshold,
                                           log_counts_crossover=dataset_obj.priors['log_counts_crossover'],
-                                          use_cuda=args.use_cuda)
+                                          use_cuda=args.use_cuda, # EDIT
+                                          use_mps=args.use_mps
+                                          )
 
         # Load the dataset into DataLoaders.
         frac = args.training_fraction  # Fraction of barcodes to use for training
@@ -704,7 +714,8 @@ def run_inference(dataset_obj: SingleCellRNACountsDataset,
                                    training_fraction=frac,
                                    fraction_empties=args.fraction_empties,
                                    shuffle=True,
-                                   use_cuda=args.use_cuda)
+                                   use_cuda=args.use_cuda,
+                                   use_mps=args.use_mps)
 
         # Set up optimizer (optionally wrapped in a learning rate scheduler).
         scheduler = get_optimizer(

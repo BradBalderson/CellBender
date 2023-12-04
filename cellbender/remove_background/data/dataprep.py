@@ -59,7 +59,7 @@ class DataLoader:
                  fraction_empties: float = consts.FRACTION_EMPTIES,
                  shuffle: bool = True,
                  sort_by: Optional[Callable[[sp.csr_matrix], np.ndarray]] = None,
-                 use_cuda: bool = True):
+                 use_cuda: bool = True, use_mps: bool = False):
         """
         Args:
             dataset: Droplet count matrix [cell, gene]
@@ -100,8 +100,11 @@ class DataLoader:
         self.shuffle = shuffle
         self.device = 'cpu'
         self.use_cuda = use_cuda
+        self.use_mps = use_mps
         if self.use_cuda:
             self.device = 'cuda'
+        elif self.use_mps:
+            self.device = 'mps'
         self._length = None
         self._reset()
 
@@ -199,7 +202,8 @@ def prep_sparse_data_for_training(dataset: sp.csr_matrix,
                                   fraction_empties: float = consts.FRACTION_EMPTIES,
                                   batch_size: int = consts.DEFAULT_BATCH_SIZE,
                                   shuffle: bool = True,
-                                  use_cuda: bool = True) -> Tuple[
+                                  use_cuda: bool = True,
+                                  use_mps: bool = True) -> Tuple[
                                       torch.utils.data.DataLoader,
                                       torch.utils.data.DataLoader]:
     """Create torch.utils.data.DataLoaders for train and tests set.
@@ -257,7 +261,8 @@ def prep_sparse_data_for_training(dataset: sp.csr_matrix,
                               batch_size=batch_size,
                               fraction_empties=fraction_empties,
                               shuffle=shuffle,
-                              use_cuda=use_cuda)
+                              use_cuda=use_cuda,
+                              use_mps=use_mps)
 
     # Set up test dataloader.
     test_dataset = dataset[test_indices, ...]
@@ -267,7 +272,8 @@ def prep_sparse_data_for_training(dataset: sp.csr_matrix,
                              batch_size=batch_size,
                              fraction_empties=fraction_empties,
                              shuffle=shuffle,
-                             use_cuda=use_cuda)
+                             use_cuda=use_cuda,
+                             use_mps=use_mps)
 
     return train_loader, test_loader
 
